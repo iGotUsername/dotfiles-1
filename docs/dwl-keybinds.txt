@@ -1,0 +1,90 @@
+DWL KEYBIND CHEATSHEET
+====================
+
+EVERYDAY
+--------
+Super + Enter          Open foot terminal
+Super + C              Open fuzzel launcher
+Super + Q              Close focused application
+Super + J              Focus next window
+Super + K              Focus previous window
+Super + F              Toggle fullscreen
+Super + L              Lock screen with lock-screen script
+Super + Shift + L      Request hibernation
+Super + Shift + R      Quit dwl (closes the graphical session)
+Super + Shift + S      Screenshot with shot-copy script
+
+TAGS / WORKSPACES
+----------------
+Super + 1-9            Show that tag
+Super + Tab            Return to previous tag selection
+Super + Ctrl + 1-9     Add/remove that tag from the displayed tags
+Super + Shift + 1-9    Move focused window to that tag
+Super + Ctrl
+      + Shift + 1-9    Add/remove that tag from the focused window
+Super + 0              Display all tags
+
+
+LAYOUTS
+-------
+Super + T              Tiled layout
+Super + Shift + F      Floating layout
+Super + M              Monocle layout
+Super + Space          Switch to previously used layout
+Super + Shift + Space Toggle focused window floating/tiled
+
+Monocle places tiled windows in the same area.
+Use Super + J/K to switch between them.
+
+TILED WINDOW ARRANGEMENT
+------------------------
+Super + I              Increase number of master-area windows
+Super + D              Decrease number of master-area windows
+Super + H              Make master area narrower
+Super + Shift + H      Make master area wider
+Super + Shift + Enter  Promote/swap a tiled window into master position
+
+The master area is normally the large left-hand column.
+The other tiled windows occupy the stack on the right.
+
+MOUSE
+-----
+Move pointer           Focus follows the mouse
+Super + left drag      Move window; tiled window becomes floating
+Super + right drag     Resize window; tiled window becomes floating
+Super + middle click   Toggle window floating/tiled
+
+MULTIPLE MONITORS
+-----------------
+Super + comma          Focus monitor to the left
+Super + period         Focus monitor to the right
+Super + Shift + <      Move window to monitor on the left
+Super + Shift + >      Move window to monitor on the right
+
+HARDWARE KEYS
+-------------
+Volume up/down         Change volume by 5%; increase limited to 100%
+Mute                   Toggle audio mute
+Brightness up/down     Change brightness by 5% using acpi_video0
+
+SYSTEM / RECOVERY
+-----------------
+Ctrl + Alt + F1-F12    Switch to another Linux virtual console
+Ctrl + Alt + F2        Useful for reaching a login outside your desktop
+Ctrl + Alt + Backspace Quit dwl if the keyboard generates the configured
+                       Terminate_Server keysym
+
+BAR CLICKS
+----------
+Wi-Fi                  Toggle Wi-Fi radio
+Bluetooth              Toggle Bluetooth power
+Volume                 Toggle audio mute
+Power                  Open shutdown confirmation; Cancel does nothing
+
+NOTES
+-----
+Fullscreen has no compositor border or gaps.
+Tiled and monocle layouts have 6-pixel outer gaps.
+Tiled windows have 6-pixel gaps between them.
+Focused borders are green; inactive borders are grey-green.
+Application-specific shortcuts are not listed here.

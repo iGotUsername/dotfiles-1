@@ -1,0 +1,19 @@
+#!/bin/sh
+
+# Everforest wallpaper
+if [ -f "$HOME/.local/share/backgrounds/wallpaper" ] &&
+   command -v swaybg >/dev/null 2>&1; then
+    swaybg -i "$HOME/.local/share/backgrounds/wallpaper" -m fill \
+        >/tmp/everforest-wallpaper.log 2>&1 &
+fi
+
+"$HOME/.local/bin/everbar" >/tmp/everbar-status.log 2>&1 &
+exec dwlb -ipc -status-commands -custom-title -center-title \
+    -no-hide-vacant-tags -vertical-padding 5 \
+    -font 'monospace,Symbols Nerd Font Mono:size=11' \
+    -active-fg-color '#272E33' -active-bg-color '#A7C080' \
+    -occupied-fg-color '#D3C6AA' -occupied-bg-color '#374145' \
+    -inactive-fg-color '#859289' -inactive-bg-color '#272E33' \
+    -urgent-fg-color '#272E33' -urgent-bg-color '#E67E80' \
+    -middle-bg-color '#272E33' \
+    -middle-bg-color-selected '#272E33' <&-

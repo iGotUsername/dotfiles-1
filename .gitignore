@@ -1,0 +1,23 @@
+# Build outputs and temporary files
+*.o
+/src/dwl/dwl
+/src/dwlb/dwlb
+supervise/
+*.log
+*~
+*.swp
+
+# Generated Wayland protocol code
+/src/dwl/*-protocol.h
+/src/dwl/*-protocol.c
+/src/dwlb/*-protocol.h
+/src/dwlb/*-protocol.c
+
+# Python/editor leftovers
+__pycache__/
+*.py[cod]
+*.swo
+.DS_Store
+
+# Review bundles
+/*-review.txt

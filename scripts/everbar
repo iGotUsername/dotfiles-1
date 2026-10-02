@@ -1,0 +1,259 @@
+#!/usr/bin/env python3
+import calendar
+import os
+import socket
+import subprocess
+import sys
+import time
+from datetime import datetime
+from pathlib import Path
+from zoneinfo import ZoneInfo
+
+HOME = Path.home()
+ACTION = str(HOME / ".local/bin/everbar")
+RUNTIME = Path(os.environ.get("XDG_RUNTIME_DIR", str(HOME / ".cache")))
+REFRESH_SOCKET = RUNTIME / "everbar-refresh.sock"
+FG = "D3C6AA"
+GREEN = "A7C080"
+RED = "E67E80"
+YELLOW = "DBBC7F"
+BLUE = "7FBBB3"
+GREY = "859289"
+
+def run(*args, timeout=3):
+    try:
+        return subprocess.run(
+            args, capture_output=True, text=True, timeout=timeout
+        ).stdout.strip()
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+
+def read_number(path):
+    try:
+        return int(Path(path).read_text().strip())
+    except (OSError, ValueError):
+        return None
+
+def cpu_sample():
+    try:
+        fields = Path("/proc/stat").read_text().splitlines()[0].split()[1:]
+        numbers = [int(value) for value in fields]
+        return sum(numbers), numbers[3] + numbers[4]
+    except (OSError, ValueError, IndexError):
+        return None
+
+def cpu_percent(previous, current):
+    if previous is None or current is None:
+        return None
+    total = current[0] - previous[0]
+    idle = current[1] - previous[1]
+    return round(100 * (total - idle) / total) if total > 0 else None
+
+def ram_usage():
+    try:
+        values = {}
+        for line in Path("/proc/meminfo").read_text().splitlines():
+            name, value = line.split(":", 1)
+            values[name] = int(value.strip().split()[0])
+
+        total = values["MemTotal"]
+        used = total - values["MemAvailable"]
+        if total >= 1024 * 1024:
+            return f"{used / (1024 * 1024):.1f} GiB"
+        return f"{used / 1024:.0f} MiB"
+    except (OSError, ValueError, KeyError, ZeroDivisionError):
+        return "--"
+
+def temperature():
+    base = Path("/sys/class/thermal")
+    for zone in base.glob("thermal_zone*"):
+        try:
+            if (zone / "type").read_text().strip() == "x86_pkg_temp":
+                value = read_number(zone / "temp")
+                return round(value / 1000) if value is not None else None
+        except OSError:
+            pass
+    return None
+
+def battery():
+    batteries = sorted(Path("/sys/class/power_supply").glob("BAT*"))
+    pairs = []
+    capacities = []
+    charging = False
+    for bat in batteries:
+        try:
+            charging |= (bat / "status").read_text().strip() == "Charging"
+        except OSError:
+            pass
+        now = read_number(bat / "energy_now")
+        full = read_number(bat / "energy_full")
+        if now is None or full is None:
+            now = read_number(bat / "charge_now")
+            full = read_number(bat / "charge_full")
+        if now is not None and full is not None and full > 0:
+            pairs.append((now, full))
+        else:
+            capacity = read_number(bat / "capacity")
+            if capacity is not None:
+                capacities.append(capacity)
+    if pairs and not capacities:
+        return round(100 * sum(p[0] for p in pairs)
+                     / sum(p[1] for p in pairs)), charging
+    if pairs or capacities:
+        percentages = [100 * n / f for n, f in pairs] + capacities
+        return round(sum(percentages) / len(percentages)), charging
+    return None, False
+
+def colored(text, color):
+    return f"^fg({color}){text}^fg({FG})"
+
+def clickable(text, action, color=FG):
+    # dwlb's ^lm() regions let these indicators respond to left clicks.
+    return f"^lm({ACTION} {action}){colored(text, color)}^lm()"
+
+def display(value, suffix="%"):
+    return "--" if value is None else f"{value}{suffix}"
+
+def status(previous, current):
+    ram = colored(f"\uefc5 {ram_usage()}", BLUE)
+    cpu = colored(f"\uf2db {display(cpu_percent(previous, current))}", GREEN)
+    temp_value = temperature()
+    temp_color = RED if temp_value is not None and temp_value >= 85 else YELLOW
+    temp = colored(f"\uf2c9 {display(temp_value, '°C')}", temp_color)
+
+    charge, charging = battery()
+    if charge is None:
+        battery_text = colored("\uf244 --", GREY)
+    else:
+        icon = ("\U000f0079" if charge >= 90 else
+                "\U000f0080" if charge >= 65 else
+                "\U000f007d" if charge >= 40 else
+                "\U000f007b" if charge >= 15 else
+                "\U000f007a")
+        color = GREEN if charging else RED if charge < 15 else YELLOW
+        if charging:
+            icon = "\U000f0084"
+        battery_text = colored(f"{icon} {charge}%", color)
+
+    wifi_on = run("nmcli", "radio", "wifi") == "enabled"
+    wifi_connected = (
+        wifi_on
+        and any(
+            line.startswith("wifi:connected")
+            for line in run(
+                "nmcli", "-t", "-f", "TYPE,STATE", "device", "status"
+            ).splitlines()
+        )
+    )
+    wifi = clickable("\U000f05a9" if wifi_on else "\U000f05aa",
+                     "wifi", GREEN if wifi_connected else GREY)
+
+    bluetooth_on = "Powered: yes" in run("bluetoothctl", "show")
+    bluetooth_connected = (
+        bluetooth_on
+        and any(
+            line.startswith("Device ")
+            for line in run("bluetoothctl", "devices", "Connected").splitlines()
+        )
+    )
+    bluetooth = clickable("\U000f00af" if bluetooth_on else "\U000f00b2",
+                          "bluetooth", BLUE if bluetooth_connected else GREY)
+
+    volume_result = run("wpctl", "get-volume", "@DEFAULT_AUDIO_SINK@")
+    try:
+        volume = round(float(volume_result.split()[1]) * 100)
+        muted = "[MUTED]" in volume_result
+        volume_icon = ("\U000f075f" if muted else
+                       "\U000f075f" if volume == 0 else
+                       "\U000f057f" if volume < 50 else
+                       "\U000f057e")
+        volume_text = f"{volume_icon} {volume}%"
+        volume_color = GREY if muted else FG
+    except (ValueError, IndexError):
+        volume_text, volume_color = "\uf026 --", GREY
+    sound = clickable(volume_text, "mute", volume_color)
+
+    power = clickable("\uf011", "power", RED)
+    return "   " + "  │  ".join(
+        (temp, cpu, ram, wifi, bluetooth, sound, battery_text, power)
+    ) + "  "
+
+def clock():
+    now = datetime.now(ZoneInfo("Europe/Oslo"))
+    return (f"{calendar.month_name[now.month]} {now.day} "
+            f"{calendar.day_name[now.weekday()]} {now:%H:%M}")
+
+def wake_bar():
+    """Ask the running bar to refresh after a click finishes."""
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM) as sock:
+            sock.sendto(b"refresh", str(REFRESH_SOCKET))
+    except OSError:
+        pass  # The bar is not running yet.
+
+def action(name):
+    if name == "wifi":
+        enabled = run("nmcli", "radio", "wifi") == "enabled"
+        subprocess.run(["nmcli", "radio", "wifi",
+                        "off" if enabled else "on"], check=False)
+    elif name == "bluetooth":
+        enabled = "Powered: yes" in run("bluetoothctl", "show")
+        subprocess.run(["bluetoothctl", "power",
+                        "off" if enabled else "on"], check=False)
+    elif name == "mute":
+        subprocess.run(["wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@",
+                        "toggle"], check=False)
+
+    elif name == "power":
+        try:
+            result = subprocess.run(
+                ["fuzzel", "--dmenu", "--prompt", "Power > ",
+                 "--lines", "3"],
+                input="Cancel\nPower off\nReboot\n",
+                capture_output=True, text=True, timeout=120
+            )
+            choice = result.stdout.strip()
+        except (OSError, subprocess.TimeoutExpired):
+            choice = ""
+        if choice == "Power off":
+            subprocess.run(["loginctl", "poweroff"], check=False)
+        elif choice == "Reboot":
+            subprocess.run(["loginctl", "reboot"], check=False)
+
+
+    if name in ("wifi", "bluetooth", "mute"):
+        wake_bar()
+
+def main():
+    if len(sys.argv) == 2:
+        action(sys.argv[1])
+        return
+    RUNTIME.mkdir(parents=True, exist_ok=True)
+    with socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM) as sock:
+        if REFRESH_SOCKET.exists():
+            try:
+                sock.sendto(b"refresh", str(REFRESH_SOCKET))
+            except OSError:
+                REFRESH_SOCKET.unlink()  # Socket left by a stopped bar.
+            else:
+                return  # A copy is already running.
+        sock.bind(str(REFRESH_SOCKET))
+        sock.settimeout(2)
+        try:
+            previous = cpu_sample()
+            while True:
+                current = cpu_sample()
+                subprocess.run(["dwlb", "-title", "all", clock()],
+                               check=False)
+                subprocess.run(["dwlb", "-status", "all",
+                                status(previous, current)], check=False)
+                previous = current
+                try:
+                    sock.recv(32)  # A click wakes this up immediately.
+                except socket.timeout:
+                    pass
+        finally:
+            REFRESH_SOCKET.unlink(missing_ok=True)
+
+if __name__ == "__main__":
+    main()

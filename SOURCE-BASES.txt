@@ -1,0 +1,25 @@
+Customized source files, not complete buildable projects.
+Unchanged project files are omitted.
+Use the recorded base commits when restoring the projects.
+Deleted upstream files are not represented here.
+
+dwl
+Base commit: 9b11a49cb757b80f8589088b487b5f1e56643aa1
+Original remotes:
+origin	https://codeberg.org/dwl/dwl.git (fetch)
+origin	https://codeberg.org/dwl/dwl.git (push)
+Changed/new files:
+  Makefile
+  config.def.h
+  config.h
+  dwl.c
+  protocols/dwl-ipc-unstable-v2.xml
+
+dwlb
+Base commit: 48dbe00bdb98a1ae6a0e60558ce14503616aa759
+Original remotes:
+origin	https://github.com/kolunmi/dwlb.git (fetch)
+origin	https://github.com/kolunmi/dwlb.git (push)
+Changed/new files:
+  config.h
+  dwlb.c
