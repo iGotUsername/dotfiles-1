@@ -38,26 +38,26 @@ cursor-shape-v1-protocol.h:
 pointer-constraints-unstable-v1-protocol.h:
 	$(WAYLAND_SCANNER) enum-header \
 		$(WAYLAND_PROTOCOLS)/unstable/pointer-constraints/pointer-constraints-unstable-v1.xml $@
-wlr-layer-shell-unstable-v1-protocol.h:
+wlr-layer-shell-unstable-v1-protocol.h: protocols/wlr-layer-shell-unstable-v1.xml
 	$(WAYLAND_SCANNER) enum-header \
 		protocols/wlr-layer-shell-unstable-v1.xml $@
-wlr-output-power-management-unstable-v1-protocol.h:
+wlr-output-power-management-unstable-v1-protocol.h: protocols/wlr-output-power-management-unstable-v1.xml
 	$(WAYLAND_SCANNER) server-header \
 		protocols/wlr-output-power-management-unstable-v1.xml $@
 xdg-shell-protocol.h:
 	$(WAYLAND_SCANNER) server-header \
 		$(WAYLAND_PROTOCOLS)/stable/xdg-shell/xdg-shell.xml $@
-dwl-ipc-unstable-v2-protocol.h:
+dwl-ipc-unstable-v2-protocol.h: protocols/dwl-ipc-unstable-v2.xml
 	$(WAYLAND_SCANNER) server-header \
 		protocols/dwl-ipc-unstable-v2.xml $@
-dwl-ipc-unstable-v2-protocol.c:
+dwl-ipc-unstable-v2-protocol.c: protocols/dwl-ipc-unstable-v2.xml
 	$(WAYLAND_SCANNER) private-code \
 		protocols/dwl-ipc-unstable-v2.xml $@
 
 config.h:
 	cp config.def.h $@
 clean:
-	rm -f dwl *.o *-protocol.h
+	rm -f dwl *.o *-protocol.h dwl-ipc-unstable-v2-protocol.c
 
 dist: clean
 	mkdir -p dwl-$(VERSION)

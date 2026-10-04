@@ -620,6 +620,10 @@ pointer_enter(void *data, struct wl_pointer *pointer,
 {
 	Seat *seat = (Seat *)data;
 
+	seat->pointer_x = wl_fixed_to_int(surface_x);
+	seat->pointer_y = wl_fixed_to_int(surface_y);
+	seat->pointer_button = 0;
+
 	seat->bar = NULL;
 	Bar *bar;
 	wl_list_for_each(bar, &bar_list, link) {
@@ -977,11 +981,12 @@ dwl_wm_output_layout_symbol(void *data, struct zdwl_ipc_output_v2 *dwl_wm_output
 {
 	Bar *bar = (Bar *)data;
 
-	if (layouts[bar->layout_idx])
-		free(layouts[bar->layout_idx]);
-	if (!(layouts[bar->layout_idx] = strdup(layout)))
+	/* Each output owns its symbol; global layout names stay shared. */
+	char *symbol = strdup(layout);
+	if (!symbol)
 		EDIE("strdup");
-	bar->layout = layouts[bar->layout_idx];
+	free(bar->layout);
+	bar->layout = symbol;
 }
 
 static void
@@ -1080,6 +1085,14 @@ handle_global(void *data, struct wl_registry *registry,
 static void
 teardown_bar(Bar *bar)
 {
+	Seat *seat;
+	wl_list_for_each(seat, &seat_list, link) {
+		if (seat->bar == bar) {
+			seat->bar = NULL;
+			seat->pointer_button = 0;
+		}
+	}
+
 	if (bar->status.colors)
 		free(bar->status.colors);
 	if (bar->status.buttons)
@@ -1090,7 +1103,7 @@ teardown_bar(Bar *bar)
 		free(bar->title.buttons);
 	if (bar->window_title)
 		free(bar->window_title);
-	if (!ipc && bar->layout)
+	if (bar->layout)
 		free(bar->layout);
 	if (ipc)
 		zdwl_ipc_output_v2_destroy(bar->dwl_wm_output);
@@ -1306,6 +1319,17 @@ parse_into_customtext(CustomText *ct, char *text)
 	ct->colors_l = ct->buttons_l = 0;
 
 	if (status_commands) {
+		/* Keep open-region pointers stable throughout this parse. */
+		size_t button_bound = strlen(text);
+		if (button_bound > ct->buttons_c) {
+			Button *buttons = realloc(ct->buttons,
+				button_bound * sizeof(*buttons));
+			if (!buttons)
+				EDIE("realloc");
+			ct->buttons = buttons;
+			ct->buttons_c = button_bound;
+		}
+
 		uint32_t codepoint;
 		uint32_t state = UTF8_ACCEPT;
 		uint32_t last_cp = 0;
@@ -1320,29 +1344,38 @@ parse_into_customtext(CustomText *ct, char *text)
 	
 		for (char *p = text; *p && str_pos < sizeof(ct->text) - 1; p++) {
 			if (state == UTF8_ACCEPT && *p == '^') {
-				p++;
-				if (*p != '^') {
+				if (p[1] != '^') {
 					char *arg, *end;
-					if (!(arg = strchr(p, '(')) || !(end = strchr(arg + 1, ')')))
+					bool known = !strncmp(p + 1, "bg(", 3)
+						|| !strncmp(p + 1, "fg(", 3)
+						|| !strncmp(p + 1, "lm(", 3)
+						|| !strncmp(p + 1, "mm(", 3)
+						|| !strncmp(p + 1, "rm(", 3)
+						|| !strncmp(p + 1, "us(", 3)
+						|| !strncmp(p + 1, "ds(", 3);
+					if (!known || !(end = strchr(p + 4, ')'))) {
+						ct->text[str_pos++] = '^';
+						last_cp = 0;
 						continue;
+					}
+					p++;
+					arg = p + 2;
 					*arg++ = '\0';
 					*end = '\0';
 				
 					if (!strcmp(p, "bg")) {
 						Color *color;
 						ARRAY_APPEND(ct->colors, ct->colors_l, ct->colors_c, color);
-						if (!*arg)
-							color->color = inactive_bg_color;
-						else
+						color->color = inactive_bg_color;
+						if (*arg)
 							parse_color(arg, &color->color);
 						color->bg = true;
 						color->start = ct->text + str_pos;
 					} else if (!strcmp(p, "fg")) {
 						Color *color;
 						ARRAY_APPEND(ct->colors, ct->colors_l, ct->colors_c, color);
-						if (!*arg)
-							color->color = inactive_fg_color;
-						else
+						color->color = inactive_fg_color;
+						if (*arg)
 							parse_color(arg, &color->color);
 						color->bg = false;
 						color->start = ct->text + str_pos;
@@ -1403,8 +1436,9 @@ parse_into_customtext(CustomText *ct, char *text)
 				
 					p = end;
 					continue;
-				}
-			}
+					}
+					p++; /* ^^ represents one literal caret. */
+					}
 
 			ct->text[str_pos++] = *p;
 			
@@ -1734,7 +1768,7 @@ main(int argc, char **argv)
 				DIE("Option -status-stdin requires an argument");
 			char *status = malloc(TEXT_MAX * sizeof(char));
 			while (fgets(status, TEXT_MAX-1, stdin)) {
-				status[strlen(status)-1] = '\0';
+				status[strcspn(status, "\n")] = '\0';
 				client_send_command(&sock_address, argv[i], "status", status, target_socket);
 			}
 			free(status);

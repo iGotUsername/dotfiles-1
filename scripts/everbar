@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import calendar
+import fcntl
 import os
 import socket
 import subprocess
@@ -20,11 +21,12 @@ YELLOW = "DBBC7F"
 BLUE = "7FBBB3"
 GREY = "859289"
 
-def run(*args, timeout=3):
+def run(*args, timeout=1):
     try:
-        return subprocess.run(
+        result = subprocess.run(
             args, capture_output=True, text=True, timeout=timeout
-        ).stdout.strip()
+        )
+        return result.stdout.strip() if result.returncode == 0 else ""
     except (OSError, subprocess.TimeoutExpired):
         return ""
 
@@ -38,7 +40,7 @@ def cpu_sample():
     try:
         fields = Path("/proc/stat").read_text().splitlines()[0].split()[1:]
         numbers = [int(value) for value in fields]
-        return sum(numbers), numbers[3] + numbers[4]
+        return sum(numbers[:8]), numbers[3] + numbers[4]
     except (OSError, ValueError, IndexError):
         return None
 
@@ -78,31 +80,45 @@ def temperature():
 def battery():
     batteries = sorted(Path("/sys/class/power_supply").glob("BAT*"))
     pairs = []
-    capacities = []
+    percentages = []
     charging = False
     for bat in batteries:
+        if read_number(bat / "present") == 0:
+            continue
         try:
             charging |= (bat / "status").read_text().strip() == "Charging"
         except OSError:
             pass
         now = read_number(bat / "energy_now")
         full = read_number(bat / "energy_full")
+        unit = "energy"
         if now is None or full is None:
             now = read_number(bat / "charge_now")
             full = read_number(bat / "charge_full")
+            unit = "charge"
+            voltage = read_number(bat / "voltage_min_design")
+            if (now is not None and full is not None
+                    and voltage is not None and voltage > 0):
+                # microamp-hours * microvolts / 1e6 = microwatt-hours.
+                now = now * voltage / 1_000_000
+                full = full * voltage / 1_000_000
+                unit = "energy"
         if now is not None and full is not None and full > 0:
-            pairs.append((now, full))
+            pairs.append((now, full, unit))
+            percentages.append(100 * now / full)
         else:
             capacity = read_number(bat / "capacity")
             if capacity is not None:
-                capacities.append(capacity)
-    if pairs and not capacities:
-        return round(100 * sum(p[0] for p in pairs)
-                     / sum(p[1] for p in pairs)), charging
-    if pairs or capacities:
-        percentages = [100 * n / f for n, f in pairs] + capacities
-        return round(sum(percentages) / len(percentages)), charging
-    return None, False
+                percentages.append(capacity)
+    if not percentages:
+        return None, False
+    if len(pairs) == len(percentages) and len({p[2] for p in pairs}) == 1:
+        percent = 100 * sum(p[0] for p in pairs) / sum(p[1] for p in pairs)
+    else:
+        # Never add unlike units; use the average of reported percentages
+        # when a common, weighted energy estimate is unavailable.
+        percent = sum(percentages) / len(percentages)
+    return max(0, min(100, round(percent))), charging
 
 def colored(text, color):
     return f"^fg({color}){text}^fg({FG})"
@@ -191,34 +207,48 @@ def wake_bar():
     except OSError:
         pass  # The bar is not running yet.
 
+def execute(args, **kwargs):
+    """Run actions safely; failures do not crash the status process."""
+    kwargs.setdefault("timeout", 5)
+    try:
+        result = subprocess.run(args, **kwargs)
+        if result.returncode:
+            print(f"everbar: {args[0]} exited {result.returncode}",
+                  file=sys.stderr)
+        return result
+    except (OSError, subprocess.TimeoutExpired) as error:
+        print(f"everbar: {args[0]}: {error}", file=sys.stderr)
+        return None
+
+
 def action(name):
     if name == "wifi":
         enabled = run("nmcli", "radio", "wifi") == "enabled"
-        subprocess.run(["nmcli", "radio", "wifi",
+        execute(["nmcli", "radio", "wifi",
                         "off" if enabled else "on"], check=False)
     elif name == "bluetooth":
         enabled = "Powered: yes" in run("bluetoothctl", "show")
-        subprocess.run(["bluetoothctl", "power",
+        execute(["bluetoothctl", "power",
                         "off" if enabled else "on"], check=False)
     elif name == "mute":
-        subprocess.run(["wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@",
+        execute(["wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@",
                         "toggle"], check=False)
 
     elif name == "power":
         try:
-            result = subprocess.run(
+            result = execute(
                 ["fuzzel", "--dmenu", "--prompt", "Power > ",
                  "--lines", "3"],
                 input="Cancel\nPower off\nReboot\n",
                 capture_output=True, text=True, timeout=120
             )
-            choice = result.stdout.strip()
+            choice = result.stdout.strip() if result is not None else ""
         except (OSError, subprocess.TimeoutExpired):
             choice = ""
         if choice == "Power off":
-            subprocess.run(["loginctl", "poweroff"], check=False)
+            execute(["loginctl", "poweroff"], check=False)
         elif choice == "Reboot":
-            subprocess.run(["loginctl", "reboot"], check=False)
+            execute(["loginctl", "reboot"], check=False)
 
 
     if name in ("wifi", "bluetooth", "mute"):
@@ -229,31 +259,49 @@ def main():
         action(sys.argv[1])
         return
     RUNTIME.mkdir(parents=True, exist_ok=True)
-    with socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM) as sock:
-        if REFRESH_SOCKET.exists():
-            try:
-                sock.sendto(b"refresh", str(REFRESH_SOCKET))
-            except OSError:
-                REFRESH_SOCKET.unlink()  # Socket left by a stopped bar.
-            else:
-                return  # A copy is already running.
-        sock.bind(str(REFRESH_SOCKET))
-        sock.settimeout(2)
+    lock_path = RUNTIME / "everbar-refresh.lock"
+    flags = os.O_RDWR | os.O_CREAT | os.O_CLOEXEC | os.O_NOFOLLOW
+    lock_fd = os.open(lock_path, flags, 0o600)
+    with os.fdopen(lock_fd, "a") as lock:
+        info = os.fstat(lock.fileno())
+        if info.st_uid != os.getuid() or info.st_mode & 0o077:
+            raise RuntimeError("everbar lock must be private and owned by you")
         try:
-            previous = cpu_sample()
-            while True:
-                current = cpu_sample()
-                subprocess.run(["dwlb", "-title", "all", clock()],
-                               check=False)
-                subprocess.run(["dwlb", "-status", "all",
-                                status(previous, current)], check=False)
-                previous = current
-                try:
-                    sock.recv(32)  # A click wakes this up immediately.
-                except socket.timeout:
-                    pass
-        finally:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            wake_bar()
+            return
+        # Keep the lock file: unlinking it would permit split ownership.
+        with socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM) as sock:
             REFRESH_SOCKET.unlink(missing_ok=True)
+            old_umask = os.umask(0o077)
+            try:
+                sock.bind(str(REFRESH_SOCKET))
+            finally:
+                os.umask(old_umask)
+            try:
+                previous = cpu_sample()
+                while True:
+                    deadline = time.monotonic() + 2
+                    current = cpu_sample()
+                    execute(["dwlb", "-title", "all", clock()], timeout=2)
+                    execute(["dwlb", "-status", "all",
+                             status(previous, current)], timeout=2)
+                    previous = current
+                    # Query time counts toward the refresh interval.
+                    sock.settimeout(max(0.05, deadline - time.monotonic()))
+                    try:
+                        sock.recv(32)
+                        sock.setblocking(False)
+                        try:
+                            while True:
+                                sock.recv(32)
+                        except BlockingIOError:
+                            pass
+                    except socket.timeout:
+                        pass
+            finally:
+                REFRESH_SOCKET.unlink(missing_ok=True)
 
 if __name__ == "__main__":
     main()

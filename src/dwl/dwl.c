@@ -981,6 +981,8 @@ createkeyboardgroup(void)
 	struct xkb_context *context;
 	struct xkb_keymap *keymap;
 
+	/* Unregistered listener: keep its link safely removable. */
+	wl_list_init(&group->destroy.link);
 	group->wlr_group = wlr_keyboard_group_create();
 	group->wlr_group->data = group;
 

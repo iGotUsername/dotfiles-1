@@ -1,13 +1,18 @@
 #!/bin/sh
 
+umask 077
+log_base=${XDG_RUNTIME_DIR:-"$HOME/.cache"}
+mkdir -p "$log_base" || exit 1
+log_dir=$(mktemp -d "$log_base/everforest-bar.XXXXXX") || exit 1
+
 # Everforest wallpaper
 if [ -f "$HOME/.local/share/backgrounds/wallpaper" ] &&
    command -v swaybg >/dev/null 2>&1; then
     swaybg -i "$HOME/.local/share/backgrounds/wallpaper" -m fill \
-        >/tmp/everforest-wallpaper.log 2>&1 &
+        >"$log_dir/wallpaper.log" 2>&1 &
 fi
 
-"$HOME/.local/bin/everbar" >/tmp/everbar-status.log 2>&1 &
+"$HOME/.local/bin/everbar" >"$log_dir/status.log" 2>&1 &
 exec dwlb -ipc -status-commands -custom-title -center-title \
     -no-hide-vacant-tags -vertical-padding 5 \
     -font 'monospace,Symbols Nerd Font Mono:size=11' \
