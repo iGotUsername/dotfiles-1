@@ -234,21 +234,26 @@ def action(name):
         execute(["wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@",
                         "toggle"], check=False)
 
+
     elif name == "power":
-        try:
-            result = execute(
-                ["fuzzel", "--dmenu", "--prompt", "Power > ",
-                 "--lines", "3"],
-                input="Cancel\nPower off\nReboot\n",
-                capture_output=True, text=True, timeout=120
-            )
-            choice = result.stdout.strip() if result is not None else ""
-        except (OSError, subprocess.TimeoutExpired):
-            choice = ""
+        result = execute(
+            ["fuzzel", "--dmenu", "--prompt", "Power > ",
+             "--lines", "4"],
+            input="Cancel\nPower off\nReboot\nHibernate\n",
+            capture_output=True, text=True, timeout=120
+        )
+
+        # Escape, a failed menu, or Cancel must not perform an action.
+        if result is None or result.returncode != 0:
+            return
+
+        choice = result.stdout.strip()
         if choice == "Power off":
             execute(["loginctl", "poweroff"], check=False)
         elif choice == "Reboot":
             execute(["loginctl", "reboot"], check=False)
+        elif choice == "Hibernate":
+            execute(["loginctl", "hibernate"], check=False)
 
 
     if name in ("wifi", "bluetooth", "mute"):
