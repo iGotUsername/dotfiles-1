@@ -1,4 +1,6 @@
-Customized source files, not complete buildable projects.
+For dwl/dwlb: customized source files, not complete buildable projects.
+Everbar in src/everbar is complete and maintained in this repository.
+Machine-readable pins and overlay lists: sources.lock.json.
 Unchanged project files are omitted.
 Use the recorded base commits when restoring the projects.
 Deleted upstream files are not represented here.
@@ -10,7 +12,6 @@ origin	https://codeberg.org/dwl/dwl.git (fetch)
 origin	https://codeberg.org/dwl/dwl.git (push)
 Changed/new files:
   Makefile
-  config.def.h
   config.h
   dwl.c
   protocols/dwl-ipc-unstable-v2.xml
@@ -23,3 +24,7 @@ origin	https://github.com/kolunmi/dwlb.git (push)
 Changed/new files:
   config.h
   dwlb.c
+
+Everforest Neovim theme (fetched by the installer; not vendored here)
+Repository: https://github.com/sainnhe/everforest.git
+Pinned commit: 85a86eb62409e3ec88713bff3d1b9d7374e112e4

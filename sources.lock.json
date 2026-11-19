@@ -1,0 +1,23 @@
+{
+  "schema": 1,
+  "dwl": {
+    "url": "https://codeberg.org/dwl/dwl.git",
+    "commit": "9b11a49cb757b80f8589088b487b5f1e56643aa1",
+    "overlays": [
+      "Makefile",
+      "config.h",
+      "dwl.c",
+      "protocols/dwl-ipc-unstable-v2.xml"
+    ]
+  },
+  "dwlb": {
+    "url": "https://github.com/kolunmi/dwlb.git",
+    "commit": "48dbe00bdb98a1ae6a0e60558ce14503616aa759",
+    "overlays": ["config.h", "dwlb.c"]
+  },
+  "everforest": {
+    "url": "https://github.com/sainnhe/everforest.git",
+    "commit": "85a86eb62409e3ec88713bff3d1b9d7374e112e4",
+    "overlays": []
+  }
+}

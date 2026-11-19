@@ -2,6 +2,9 @@
 *.o
 /src/dwl/dwl
 /src/dwlb/dwlb
+/src/everbar/everbar
+/src/everbar/test-status
+/src/everbar/test-services
 supervise/
 *.log
 *~
@@ -21,3 +24,13 @@ __pycache__/
 
 # Review bundles
 /*-review.txt
+
+# Host-specific secrets/history must never be published with the dotfiles.
+/.ssh/
+/.gnupg/
+/.cert/
+/.gitconfig
+/.gitconfig-*
+/.bash_history*
+/.python_history
+/.env

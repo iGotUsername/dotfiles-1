@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Original implementation, retained only as a rendering regression oracle.
 import calendar
 import fcntl
 import os

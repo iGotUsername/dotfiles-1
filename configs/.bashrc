@@ -4,6 +4,7 @@
 [[ $- != *i* ]] && return
 
 alias ls='ls --color=auto'
+alias opencode='docker start -ai opencode-sandbox'
 PS1='[\u@\h \W]\$ '
 
 export MANPAGER='nvim +Man!'
